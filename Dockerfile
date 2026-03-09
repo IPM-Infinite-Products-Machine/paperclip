@@ -33,7 +33,9 @@ RUN test -f server/dist/index.js || (echo "ERROR: server build output missing" &
 FROM base AS production
 WORKDIR /app
 COPY --chown=node:node --from=build /app /app
-RUN npm install --global --omit=dev @anthropic-ai/claude-code@latest @openai/codex@latest opencode-ai \
+COPY --chown=node:node docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh \
+  && npm install --global --omit=dev @anthropic-ai/claude-code@latest @openai/codex@latest opencode-ai \
   && mkdir -p /paperclip/instances/default/data/storage \
      /paperclip/instances/default/data/backups \
      /paperclip/instances/default/secrets \
@@ -54,4 +56,4 @@ ENV NODE_ENV=production \
 EXPOSE 3100
 
 USER node
-CMD ["node", "--import", "./server/node_modules/tsx/dist/loader.mjs", "server/dist/index.js"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
