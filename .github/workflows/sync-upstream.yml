@@ -1,0 +1,55 @@
+name: Sync Fork with Upstream
+
+on:
+  schedule:
+    - cron: '0 6 */7 * *'  # Every 7 days at 6 AM UTC
+  workflow_dispatch:  # Manual trigger from GitHub Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add upstream remote
+        run: git remote add upstream https://github.com/paperclipai/paperclip.git
+
+      - name: Fetch upstream
+        run: git fetch upstream master
+
+      - name: Check for new commits
+        id: check
+        run: |
+          BEHIND=$(git rev-list --count HEAD..upstream/master)
+          echo "behind=$BEHIND" >> $GITHUB_OUTPUT
+          echo "Upstream is $BEHIND commits ahead"
+
+      - name: Merge upstream (if updates exist)
+        if: steps.check.outputs.behind != '0'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git merge upstream/master --no-edit || {
+            echo "::warning::Merge conflict detected. Manual resolution needed."
+            git merge --abort
+            exit 1
+          }
+
+      - name: Re-apply Railway fix (remove VOLUME if re-added)
+        if: steps.check.outputs.behind != '0'
+        run: |
+          if grep -q '^VOLUME' Dockerfile 2>/dev/null; then
+            sed -i '/^VOLUME/d' Dockerfile
+            git add Dockerfile
+            git commit -m "Re-apply: Remove VOLUME instruction for Railway compatibility"
+          fi
+
+      - name: Push to fork
+        if: steps.check.outputs.behind != '0'
+        run: git push origin master
